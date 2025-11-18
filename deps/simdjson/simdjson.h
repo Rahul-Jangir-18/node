@@ -1,4 +1,4 @@
-/* auto-generated on 2025-11-03 11:03:21 -0500. version 4.2.1 Do not edit! */
+/* auto-generated on 2025-11-11 14:17:08 -0500. version 4.2.2 Do not edit! */
 /* including simdjson.h:  */
 /* begin file simdjson.h */
 #ifndef SIMDJSON_H
@@ -2513,7 +2513,7 @@ namespace std {
 #define SIMDJSON_SIMDJSON_VERSION_H
 
 /** The version of simdjson being used (major.minor.revision) */
-#define SIMDJSON_VERSION "4.2.1"
+#define SIMDJSON_VERSION "4.2.2"
 
 namespace simdjson {
 enum {
@@ -2528,7 +2528,7 @@ enum {
   /**
    * The revision (major.minor.REVISION) of simdjson being used.
    */
-  SIMDJSON_VERSION_REVISION = 1
+  SIMDJSON_VERSION_REVISION = 2
 };
 } // namespace simdjson
 
@@ -2815,6 +2815,8 @@ struct simdjson_result_base : protected std::pair<T, error_code> {
    */
   simdjson_inline T&& value_unsafe() && noexcept;
 
+  using value_type = T;
+  using error_type = error_code;
 }; // struct simdjson_result_base
 
 } // namespace internal
@@ -2926,6 +2928,8 @@ struct simdjson_result : public internal::simdjson_result_base<T> {
    */
   simdjson_inline T&& value_unsafe() && noexcept;
 
+  using value_type = T;
+  using error_type = error_code;
 }; // struct simdjson_result
 
 #if SIMDJSON_EXCEPTIONS
@@ -4165,6 +4169,19 @@ struct padded_string final {
    **/
   inline static simdjson_result<padded_string> load(std::string_view path) noexcept;
 
+    #if defined(_WIN32) && SIMDJSON_CPLUSPLUS17
+  /**
+   * This function accepts a wide string path (UTF-16) and converts it to
+   * UTF-8 before loading the file. This allows windows users to work
+   * with unicode file paths without manually converting the paths everytime.
+   *
+   * @return IO_ERROR on error, including conversion failures.
+   *
+   * @param path the path to the file as a wide string.
+  **/
+    inline static simdjson_result<padded_string> load(std::wstring_view path) noexcept;
+  #endif
+
 private:
   padded_string &operator=(const padded_string &o) = delete;
   padded_string(const padded_string &o) = delete;
@@ -4476,6 +4493,7 @@ inline padded_string_view pad_with_reserve(std::string& s) noexcept {
 /* end file simdjson/padded_string_view-inl.h */
 
 #include <climits>
+#include <cwchar>
 
 namespace simdjson {
 namespace internal {
@@ -4652,6 +4670,62 @@ inline simdjson_result<padded_string> padded_string::load(std::string_view filen
 
   return s;
 }
+
+#if defined(_WIN32) && SIMDJSON_CPLUSPLUS17
+inline simdjson_result<padded_string> padded_string::load(std::wstring_view filename) noexcept {
+  // Open the file using the wide characters
+  SIMDJSON_PUSH_DISABLE_WARNINGS
+  SIMDJSON_DISABLE_DEPRECATED_WARNING // Disable CRT_SECURE warning on MSVC: manually verified this is safe
+  std::FILE *fp = _wfopen(filename.data(), L"rb");
+  SIMDJSON_POP_DISABLE_WARNINGS
+
+  if (fp == nullptr) {
+    return IO_ERROR;
+  }
+
+  // Get the file size
+  int ret;
+#if SIMDJSON_VISUAL_STUDIO && !SIMDJSON_IS_32BITS
+  ret = _fseeki64(fp, 0, SEEK_END);
+#else
+  ret = std::fseek(fp, 0, SEEK_END);
+#endif // _WIN64
+  if(ret < 0) {
+    std::fclose(fp);
+    return IO_ERROR;
+  }
+#if SIMDJSON_VISUAL_STUDIO && !SIMDJSON_IS_32BITS
+  __int64 llen = _ftelli64(fp);
+  if(llen == -1L) {
+    std::fclose(fp);
+    return IO_ERROR;
+  }
+#else
+  long llen = std::ftell(fp);
+  if((llen < 0) || (llen == LONG_MAX)) {
+    std::fclose(fp);
+    return IO_ERROR;
+  }
+#endif
+
+  // Allocate the padded_string
+  size_t len = static_cast<size_t>(llen);
+  padded_string s(len);
+  if (s.data() == nullptr) {
+    std::fclose(fp);
+    return MEMALLOC;
+  }
+
+  // Read the padded_string
+  std::rewind(fp);
+  size_t bytes_read = std::fread(s.data(), 1, len, fp);
+  if (std::fclose(fp) != 0 || bytes_read != len) {
+    return IO_ERROR;
+  }
+
+  return s;
+}
+#endif
 
 } // namespace simdjson
 
@@ -12996,6 +13070,9 @@ struct implementation_simdjson_result_base {
    */
   simdjson_inline T&& value_unsafe() && noexcept;
 
+  using value_type = T;
+  using error_type = error_code;
+
 protected:
   /** users should never directly access first and second. **/
   T first{}; /** Users should never directly access 'first'. **/
@@ -15190,6 +15267,9 @@ struct implementation_simdjson_result_base {
    * the error() method returns a value that evaluates to false.
    */
   simdjson_inline T&& value_unsafe() && noexcept;
+
+  using value_type = T;
+  using error_type = error_code;
 
 protected:
   /** users should never directly access first and second. **/
@@ -17885,6 +17965,9 @@ struct implementation_simdjson_result_base {
    */
   simdjson_inline T&& value_unsafe() && noexcept;
 
+  using value_type = T;
+  using error_type = error_code;
+
 protected:
   /** users should never directly access first and second. **/
   T first{}; /** Users should never directly access 'first'. **/
@@ -20578,6 +20661,9 @@ struct implementation_simdjson_result_base {
    * the error() method returns a value that evaluates to false.
    */
   simdjson_inline T&& value_unsafe() && noexcept;
+
+  using value_type = T;
+  using error_type = error_code;
 
 protected:
   /** users should never directly access first and second. **/
@@ -23387,6 +23473,9 @@ struct implementation_simdjson_result_base {
    * the error() method returns a value that evaluates to false.
    */
   simdjson_inline T&& value_unsafe() && noexcept;
+
+  using value_type = T;
+  using error_type = error_code;
 
 protected:
   /** users should never directly access first and second. **/
@@ -26513,6 +26602,9 @@ struct implementation_simdjson_result_base {
    */
   simdjson_inline T&& value_unsafe() && noexcept;
 
+  using value_type = T;
+  using error_type = error_code;
+
 protected:
   /** users should never directly access first and second. **/
   T first{}; /** Users should never directly access 'first'. **/
@@ -29114,6 +29206,9 @@ struct implementation_simdjson_result_base {
    * the error() method returns a value that evaluates to false.
    */
   simdjson_inline T&& value_unsafe() && noexcept;
+
+  using value_type = T;
+  using error_type = error_code;
 
 protected:
   /** users should never directly access first and second. **/
@@ -31729,6 +31824,9 @@ struct implementation_simdjson_result_base {
    * the error() method returns a value that evaluates to false.
    */
   simdjson_inline T&& value_unsafe() && noexcept;
+
+  using value_type = T;
+  using error_type = error_code;
 
 protected:
   /** users should never directly access first and second. **/
@@ -46859,7 +46957,7 @@ template <std::ranges::range R>
 simdjson_inline void string_builder::append(const R &range) noexcept {
   auto it = std::ranges::begin(range);
   auto end = std::ranges::end(range);
-  if constexpr (concepts::is_pair<typename R::value_type>) {
+  if constexpr (concepts::is_pair<std::ranges::range_value_t<R>>) {
     start_object();
 
     if (it == end) {
@@ -61324,7 +61422,7 @@ template <std::ranges::range R>
 simdjson_inline void string_builder::append(const R &range) noexcept {
   auto it = std::ranges::begin(range);
   auto end = std::ranges::end(range);
-  if constexpr (concepts::is_pair<typename R::value_type>) {
+  if constexpr (concepts::is_pair<std::ranges::range_value_t<R>>) {
     start_object();
 
     if (it == end) {
@@ -76288,7 +76386,7 @@ template <std::ranges::range R>
 simdjson_inline void string_builder::append(const R &range) noexcept {
   auto it = std::ranges::begin(range);
   auto end = std::ranges::end(range);
-  if constexpr (concepts::is_pair<typename R::value_type>) {
+  if constexpr (concepts::is_pair<std::ranges::range_value_t<R>>) {
     start_object();
 
     if (it == end) {
@@ -91252,7 +91350,7 @@ template <std::ranges::range R>
 simdjson_inline void string_builder::append(const R &range) noexcept {
   auto it = std::ranges::begin(range);
   auto end = std::ranges::end(range);
-  if constexpr (concepts::is_pair<typename R::value_type>) {
+  if constexpr (concepts::is_pair<std::ranges::range_value_t<R>>) {
     start_object();
 
     if (it == end) {
@@ -106331,7 +106429,7 @@ template <std::ranges::range R>
 simdjson_inline void string_builder::append(const R &range) noexcept {
   auto it = std::ranges::begin(range);
   auto end = std::ranges::end(range);
-  if constexpr (concepts::is_pair<typename R::value_type>) {
+  if constexpr (concepts::is_pair<std::ranges::range_value_t<R>>) {
     start_object();
 
     if (it == end) {
@@ -121726,7 +121824,7 @@ template <std::ranges::range R>
 simdjson_inline void string_builder::append(const R &range) noexcept {
   auto it = std::ranges::begin(range);
   auto end = std::ranges::end(range);
-  if constexpr (concepts::is_pair<typename R::value_type>) {
+  if constexpr (concepts::is_pair<std::ranges::range_value_t<R>>) {
     start_object();
 
     if (it == end) {
@@ -136598,7 +136696,7 @@ template <std::ranges::range R>
 simdjson_inline void string_builder::append(const R &range) noexcept {
   auto it = std::ranges::begin(range);
   auto end = std::ranges::end(range);
-  if constexpr (concepts::is_pair<typename R::value_type>) {
+  if constexpr (concepts::is_pair<std::ranges::range_value_t<R>>) {
     start_object();
 
     if (it == end) {
@@ -151483,7 +151581,7 @@ template <std::ranges::range R>
 simdjson_inline void string_builder::append(const R &range) noexcept {
   auto it = std::ranges::begin(range);
   auto end = std::ranges::end(range);
-  if constexpr (concepts::is_pair<typename R::value_type>) {
+  if constexpr (concepts::is_pair<std::ranges::range_value_t<R>>) {
     start_object();
 
     if (it == end) {
