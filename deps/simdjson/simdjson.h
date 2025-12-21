@@ -1,4 +1,4 @@
-/* auto-generated on 2025-11-11 14:17:08 -0500. version 4.2.2 Do not edit! */
+/* auto-generated on 2025-12-17 20:32:36 -0500. version 4.2.4 Do not edit! */
 /* including simdjson.h:  */
 /* begin file simdjson.h */
 #ifndef SIMDJSON_H
@@ -2513,7 +2513,7 @@ namespace std {
 #define SIMDJSON_SIMDJSON_VERSION_H
 
 /** The version of simdjson being used (major.minor.revision) */
-#define SIMDJSON_VERSION "4.2.2"
+#define SIMDJSON_VERSION "4.2.4"
 
 namespace simdjson {
 enum {
@@ -2528,7 +2528,7 @@ enum {
   /**
    * The revision (major.minor.REVISION) of simdjson being used.
    */
-  SIMDJSON_VERSION_REVISION = 2
+  SIMDJSON_VERSION_REVISION = 4
 };
 } // namespace simdjson
 
@@ -5387,10 +5387,7 @@ public:
    *
    * ### std::string references
    *
-   * If you pass a mutable std::string reference (std::string&), the parser will seek to extend
-   * its capacity to SIMDJSON_PADDING bytes beyond the end of the string.
-   *
-   * Whenever you pass an std::string reference, the parser will access the bytes beyond the end of
+   * Whenever you pass an std::string reference, the parser may access the bytes beyond the end of
    * the string but before the end of the allocated memory (std::string::capacity()).
    * If you are using a sanitizer that checks for reading uninitialized bytes or std::string's
    * container-overflow checks, you may encounter sanitizer warnings.
@@ -5422,7 +5419,7 @@ public:
   /** @overload parse(const uint8_t *buf, size_t len, bool realloc_if_needed) */
   simdjson_inline simdjson_result<element> parse(const char *buf, size_t len, bool realloc_if_needed = true) & noexcept;
   simdjson_inline simdjson_result<element> parse(const char *buf, size_t len, bool realloc_if_needed = true) && =delete;
-  /** @overload parse(const uint8_t *buf, size_t len, bool realloc_if_needed) */
+  /** @overload parse(const std::string &) */
   simdjson_inline simdjson_result<element> parse(const std::string &s) & noexcept;
   simdjson_inline simdjson_result<element> parse(const std::string &s) && =delete;
   /** @overload parse(const uint8_t *buf, size_t len, bool realloc_if_needed) */
@@ -35278,7 +35275,9 @@ public:
    */
   simdjson_inline simdjson_result<value> at(size_t index) noexcept;
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -35312,7 +35311,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -35659,7 +35659,9 @@ public:
   simdjson_inline simdjson_result<arm64::ondemand::array_iterator> end() & noexcept;
 
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -35691,7 +35693,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the defaul because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -37160,9 +37163,8 @@ struct has_custom_serialization : std::false_type {};
 
 inline constexpr struct serialize_tag {
   template <typename T>
-    requires custom_deserializable<T>
-  constexpr void operator()(arm64::builder::string_builder& b, T& obj) const{
-    return tag_invoke(*this, b, obj);
+  constexpr void operator()(arm64::builder::string_builder& b, T&& obj) const{
+    return tag_invoke(*this, b, std::forward<T>(obj));
   }
 
 
@@ -37301,7 +37303,7 @@ public:
 
   template <typename T>
   requires(require_custom_serialization<T>)
-  simdjson_inline void append(const T &val);
+  simdjson_inline void append(T &&val);
 
   // Support for string-like types
   template <typename T>
@@ -37312,7 +37314,7 @@ public:
 #if SIMDJSON_SUPPORTS_RANGES && SIMDJSON_SUPPORTS_CONCEPTS
   // Support for range-based appending (std::ranges::view, etc.)
   template <std::ranges::range R>
-requires (!std::is_convertible<R, std::string_view>::value)
+requires (!std::is_convertible<R, std::string_view>::value && !require_custom_serialization<R>)
   simdjson_inline void append(const R &range) noexcept;
 #endif
   /**
@@ -38237,7 +38239,9 @@ public:
   simdjson_inline simdjson_result<array_iterator> end() & noexcept;
 
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -38281,7 +38285,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -39466,7 +39471,9 @@ public:
   simdjson_inline simdjson_result<object_iterator> begin() noexcept;
   simdjson_inline simdjson_result<object_iterator> end() noexcept;
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -39514,7 +39521,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -46938,8 +46946,8 @@ simdjson_inline void string_builder::append(const T &opt) {
 
 template <typename T>
   requires(require_custom_serialization<T>)
-simdjson_inline void string_builder::append(const T &val) {
-  serialize(*this, val);
+simdjson_inline void string_builder::append(T &&val) {
+  serialize(*this, std::forward<T>(val));
 }
 
 template <typename T>
@@ -46953,7 +46961,7 @@ simdjson_inline void string_builder::append(const T &value) {
 #if SIMDJSON_SUPPORTS_RANGES && SIMDJSON_SUPPORTS_CONCEPTS
 // Support for range-based appending (std::ranges::view, etc.)
 template <std::ranges::range R>
-  requires(!std::is_convertible<R, std::string_view>::value)
+  requires(!std::is_convertible<R, std::string_view>::value && !require_custom_serialization<R>)
 simdjson_inline void string_builder::append(const R &range) noexcept {
   auto it = std::ranges::begin(range);
   auto end = std::ranges::end(range);
@@ -49743,7 +49751,9 @@ public:
    */
   simdjson_inline simdjson_result<value> at(size_t index) noexcept;
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -49777,7 +49787,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -50124,7 +50135,9 @@ public:
   simdjson_inline simdjson_result<fallback::ondemand::array_iterator> end() & noexcept;
 
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -50156,7 +50169,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the defaul because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -51625,9 +51639,8 @@ struct has_custom_serialization : std::false_type {};
 
 inline constexpr struct serialize_tag {
   template <typename T>
-    requires custom_deserializable<T>
-  constexpr void operator()(fallback::builder::string_builder& b, T& obj) const{
-    return tag_invoke(*this, b, obj);
+  constexpr void operator()(fallback::builder::string_builder& b, T&& obj) const{
+    return tag_invoke(*this, b, std::forward<T>(obj));
   }
 
 
@@ -51766,7 +51779,7 @@ public:
 
   template <typename T>
   requires(require_custom_serialization<T>)
-  simdjson_inline void append(const T &val);
+  simdjson_inline void append(T &&val);
 
   // Support for string-like types
   template <typename T>
@@ -51777,7 +51790,7 @@ public:
 #if SIMDJSON_SUPPORTS_RANGES && SIMDJSON_SUPPORTS_CONCEPTS
   // Support for range-based appending (std::ranges::view, etc.)
   template <std::ranges::range R>
-requires (!std::is_convertible<R, std::string_view>::value)
+requires (!std::is_convertible<R, std::string_view>::value && !require_custom_serialization<R>)
   simdjson_inline void append(const R &range) noexcept;
 #endif
   /**
@@ -52702,7 +52715,9 @@ public:
   simdjson_inline simdjson_result<array_iterator> end() & noexcept;
 
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -52746,7 +52761,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -53931,7 +53947,9 @@ public:
   simdjson_inline simdjson_result<object_iterator> begin() noexcept;
   simdjson_inline simdjson_result<object_iterator> end() noexcept;
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -53979,7 +53997,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -61403,8 +61422,8 @@ simdjson_inline void string_builder::append(const T &opt) {
 
 template <typename T>
   requires(require_custom_serialization<T>)
-simdjson_inline void string_builder::append(const T &val) {
-  serialize(*this, val);
+simdjson_inline void string_builder::append(T &&val) {
+  serialize(*this, std::forward<T>(val));
 }
 
 template <typename T>
@@ -61418,7 +61437,7 @@ simdjson_inline void string_builder::append(const T &value) {
 #if SIMDJSON_SUPPORTS_RANGES && SIMDJSON_SUPPORTS_CONCEPTS
 // Support for range-based appending (std::ranges::view, etc.)
 template <std::ranges::range R>
-  requires(!std::is_convertible<R, std::string_view>::value)
+  requires(!std::is_convertible<R, std::string_view>::value && !require_custom_serialization<R>)
 simdjson_inline void string_builder::append(const R &range) noexcept {
   auto it = std::ranges::begin(range);
   auto end = std::ranges::end(range);
@@ -64707,7 +64726,9 @@ public:
    */
   simdjson_inline simdjson_result<value> at(size_t index) noexcept;
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -64741,7 +64762,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -65088,7 +65110,9 @@ public:
   simdjson_inline simdjson_result<haswell::ondemand::array_iterator> end() & noexcept;
 
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -65120,7 +65144,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the defaul because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -66589,9 +66614,8 @@ struct has_custom_serialization : std::false_type {};
 
 inline constexpr struct serialize_tag {
   template <typename T>
-    requires custom_deserializable<T>
-  constexpr void operator()(haswell::builder::string_builder& b, T& obj) const{
-    return tag_invoke(*this, b, obj);
+  constexpr void operator()(haswell::builder::string_builder& b, T&& obj) const{
+    return tag_invoke(*this, b, std::forward<T>(obj));
   }
 
 
@@ -66730,7 +66754,7 @@ public:
 
   template <typename T>
   requires(require_custom_serialization<T>)
-  simdjson_inline void append(const T &val);
+  simdjson_inline void append(T &&val);
 
   // Support for string-like types
   template <typename T>
@@ -66741,7 +66765,7 @@ public:
 #if SIMDJSON_SUPPORTS_RANGES && SIMDJSON_SUPPORTS_CONCEPTS
   // Support for range-based appending (std::ranges::view, etc.)
   template <std::ranges::range R>
-requires (!std::is_convertible<R, std::string_view>::value)
+requires (!std::is_convertible<R, std::string_view>::value && !require_custom_serialization<R>)
   simdjson_inline void append(const R &range) noexcept;
 #endif
   /**
@@ -67666,7 +67690,9 @@ public:
   simdjson_inline simdjson_result<array_iterator> end() & noexcept;
 
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -67710,7 +67736,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -68895,7 +68922,9 @@ public:
   simdjson_inline simdjson_result<object_iterator> begin() noexcept;
   simdjson_inline simdjson_result<object_iterator> end() noexcept;
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -68943,7 +68972,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -76367,8 +76397,8 @@ simdjson_inline void string_builder::append(const T &opt) {
 
 template <typename T>
   requires(require_custom_serialization<T>)
-simdjson_inline void string_builder::append(const T &val) {
-  serialize(*this, val);
+simdjson_inline void string_builder::append(T &&val) {
+  serialize(*this, std::forward<T>(val));
 }
 
 template <typename T>
@@ -76382,7 +76412,7 @@ simdjson_inline void string_builder::append(const T &value) {
 #if SIMDJSON_SUPPORTS_RANGES && SIMDJSON_SUPPORTS_CONCEPTS
 // Support for range-based appending (std::ranges::view, etc.)
 template <std::ranges::range R>
-  requires(!std::is_convertible<R, std::string_view>::value)
+  requires(!std::is_convertible<R, std::string_view>::value && !require_custom_serialization<R>)
 simdjson_inline void string_builder::append(const R &range) noexcept {
   auto it = std::ranges::begin(range);
   auto end = std::ranges::end(range);
@@ -79671,7 +79701,9 @@ public:
    */
   simdjson_inline simdjson_result<value> at(size_t index) noexcept;
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -79705,7 +79737,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -80052,7 +80085,9 @@ public:
   simdjson_inline simdjson_result<icelake::ondemand::array_iterator> end() & noexcept;
 
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -80084,7 +80119,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the defaul because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -81553,9 +81589,8 @@ struct has_custom_serialization : std::false_type {};
 
 inline constexpr struct serialize_tag {
   template <typename T>
-    requires custom_deserializable<T>
-  constexpr void operator()(icelake::builder::string_builder& b, T& obj) const{
-    return tag_invoke(*this, b, obj);
+  constexpr void operator()(icelake::builder::string_builder& b, T&& obj) const{
+    return tag_invoke(*this, b, std::forward<T>(obj));
   }
 
 
@@ -81694,7 +81729,7 @@ public:
 
   template <typename T>
   requires(require_custom_serialization<T>)
-  simdjson_inline void append(const T &val);
+  simdjson_inline void append(T &&val);
 
   // Support for string-like types
   template <typename T>
@@ -81705,7 +81740,7 @@ public:
 #if SIMDJSON_SUPPORTS_RANGES && SIMDJSON_SUPPORTS_CONCEPTS
   // Support for range-based appending (std::ranges::view, etc.)
   template <std::ranges::range R>
-requires (!std::is_convertible<R, std::string_view>::value)
+requires (!std::is_convertible<R, std::string_view>::value && !require_custom_serialization<R>)
   simdjson_inline void append(const R &range) noexcept;
 #endif
   /**
@@ -82630,7 +82665,9 @@ public:
   simdjson_inline simdjson_result<array_iterator> end() & noexcept;
 
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -82674,7 +82711,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -83859,7 +83897,9 @@ public:
   simdjson_inline simdjson_result<object_iterator> begin() noexcept;
   simdjson_inline simdjson_result<object_iterator> end() noexcept;
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -83907,7 +83947,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -91331,8 +91372,8 @@ simdjson_inline void string_builder::append(const T &opt) {
 
 template <typename T>
   requires(require_custom_serialization<T>)
-simdjson_inline void string_builder::append(const T &val) {
-  serialize(*this, val);
+simdjson_inline void string_builder::append(T &&val) {
+  serialize(*this, std::forward<T>(val));
 }
 
 template <typename T>
@@ -91346,7 +91387,7 @@ simdjson_inline void string_builder::append(const T &value) {
 #if SIMDJSON_SUPPORTS_RANGES && SIMDJSON_SUPPORTS_CONCEPTS
 // Support for range-based appending (std::ranges::view, etc.)
 template <std::ranges::range R>
-  requires(!std::is_convertible<R, std::string_view>::value)
+  requires(!std::is_convertible<R, std::string_view>::value && !require_custom_serialization<R>)
 simdjson_inline void string_builder::append(const R &range) noexcept {
   auto it = std::ranges::begin(range);
   auto end = std::ranges::end(range);
@@ -94750,7 +94791,9 @@ public:
    */
   simdjson_inline simdjson_result<value> at(size_t index) noexcept;
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -94784,7 +94827,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -95131,7 +95175,9 @@ public:
   simdjson_inline simdjson_result<ppc64::ondemand::array_iterator> end() & noexcept;
 
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -95163,7 +95209,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the defaul because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -96632,9 +96679,8 @@ struct has_custom_serialization : std::false_type {};
 
 inline constexpr struct serialize_tag {
   template <typename T>
-    requires custom_deserializable<T>
-  constexpr void operator()(ppc64::builder::string_builder& b, T& obj) const{
-    return tag_invoke(*this, b, obj);
+  constexpr void operator()(ppc64::builder::string_builder& b, T&& obj) const{
+    return tag_invoke(*this, b, std::forward<T>(obj));
   }
 
 
@@ -96773,7 +96819,7 @@ public:
 
   template <typename T>
   requires(require_custom_serialization<T>)
-  simdjson_inline void append(const T &val);
+  simdjson_inline void append(T &&val);
 
   // Support for string-like types
   template <typename T>
@@ -96784,7 +96830,7 @@ public:
 #if SIMDJSON_SUPPORTS_RANGES && SIMDJSON_SUPPORTS_CONCEPTS
   // Support for range-based appending (std::ranges::view, etc.)
   template <std::ranges::range R>
-requires (!std::is_convertible<R, std::string_view>::value)
+requires (!std::is_convertible<R, std::string_view>::value && !require_custom_serialization<R>)
   simdjson_inline void append(const R &range) noexcept;
 #endif
   /**
@@ -97709,7 +97755,9 @@ public:
   simdjson_inline simdjson_result<array_iterator> end() & noexcept;
 
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -97753,7 +97801,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -98938,7 +98987,9 @@ public:
   simdjson_inline simdjson_result<object_iterator> begin() noexcept;
   simdjson_inline simdjson_result<object_iterator> end() noexcept;
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -98986,7 +99037,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -106410,8 +106462,8 @@ simdjson_inline void string_builder::append(const T &opt) {
 
 template <typename T>
   requires(require_custom_serialization<T>)
-simdjson_inline void string_builder::append(const T &val) {
-  serialize(*this, val);
+simdjson_inline void string_builder::append(T &&val) {
+  serialize(*this, std::forward<T>(val));
 }
 
 template <typename T>
@@ -106425,7 +106477,7 @@ simdjson_inline void string_builder::append(const T &value) {
 #if SIMDJSON_SUPPORTS_RANGES && SIMDJSON_SUPPORTS_CONCEPTS
 // Support for range-based appending (std::ranges::view, etc.)
 template <std::ranges::range R>
-  requires(!std::is_convertible<R, std::string_view>::value)
+  requires(!std::is_convertible<R, std::string_view>::value && !require_custom_serialization<R>)
 simdjson_inline void string_builder::append(const R &range) noexcept {
   auto it = std::ranges::begin(range);
   auto end = std::ranges::end(range);
@@ -110145,7 +110197,9 @@ public:
    */
   simdjson_inline simdjson_result<value> at(size_t index) noexcept;
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -110179,7 +110233,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -110526,7 +110581,9 @@ public:
   simdjson_inline simdjson_result<westmere::ondemand::array_iterator> end() & noexcept;
 
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -110558,7 +110615,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the defaul because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -112027,9 +112085,8 @@ struct has_custom_serialization : std::false_type {};
 
 inline constexpr struct serialize_tag {
   template <typename T>
-    requires custom_deserializable<T>
-  constexpr void operator()(westmere::builder::string_builder& b, T& obj) const{
-    return tag_invoke(*this, b, obj);
+  constexpr void operator()(westmere::builder::string_builder& b, T&& obj) const{
+    return tag_invoke(*this, b, std::forward<T>(obj));
   }
 
 
@@ -112168,7 +112225,7 @@ public:
 
   template <typename T>
   requires(require_custom_serialization<T>)
-  simdjson_inline void append(const T &val);
+  simdjson_inline void append(T &&val);
 
   // Support for string-like types
   template <typename T>
@@ -112179,7 +112236,7 @@ public:
 #if SIMDJSON_SUPPORTS_RANGES && SIMDJSON_SUPPORTS_CONCEPTS
   // Support for range-based appending (std::ranges::view, etc.)
   template <std::ranges::range R>
-requires (!std::is_convertible<R, std::string_view>::value)
+requires (!std::is_convertible<R, std::string_view>::value && !require_custom_serialization<R>)
   simdjson_inline void append(const R &range) noexcept;
 #endif
   /**
@@ -113104,7 +113161,9 @@ public:
   simdjson_inline simdjson_result<array_iterator> end() & noexcept;
 
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -113148,7 +113207,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -114333,7 +114393,9 @@ public:
   simdjson_inline simdjson_result<object_iterator> begin() noexcept;
   simdjson_inline simdjson_result<object_iterator> end() noexcept;
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -114381,7 +114443,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -121805,8 +121868,8 @@ simdjson_inline void string_builder::append(const T &opt) {
 
 template <typename T>
   requires(require_custom_serialization<T>)
-simdjson_inline void string_builder::append(const T &val) {
-  serialize(*this, val);
+simdjson_inline void string_builder::append(T &&val) {
+  serialize(*this, std::forward<T>(val));
 }
 
 template <typename T>
@@ -121820,7 +121883,7 @@ simdjson_inline void string_builder::append(const T &value) {
 #if SIMDJSON_SUPPORTS_RANGES && SIMDJSON_SUPPORTS_CONCEPTS
 // Support for range-based appending (std::ranges::view, etc.)
 template <std::ranges::range R>
-  requires(!std::is_convertible<R, std::string_view>::value)
+  requires(!std::is_convertible<R, std::string_view>::value && !require_custom_serialization<R>)
 simdjson_inline void string_builder::append(const R &range) noexcept {
   auto it = std::ranges::begin(range);
   auto end = std::ranges::end(range);
@@ -125017,7 +125080,9 @@ public:
    */
   simdjson_inline simdjson_result<value> at(size_t index) noexcept;
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -125051,7 +125116,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -125398,7 +125464,9 @@ public:
   simdjson_inline simdjson_result<lsx::ondemand::array_iterator> end() & noexcept;
 
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -125430,7 +125498,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the defaul because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -126899,9 +126968,8 @@ struct has_custom_serialization : std::false_type {};
 
 inline constexpr struct serialize_tag {
   template <typename T>
-    requires custom_deserializable<T>
-  constexpr void operator()(lsx::builder::string_builder& b, T& obj) const{
-    return tag_invoke(*this, b, obj);
+  constexpr void operator()(lsx::builder::string_builder& b, T&& obj) const{
+    return tag_invoke(*this, b, std::forward<T>(obj));
   }
 
 
@@ -127040,7 +127108,7 @@ public:
 
   template <typename T>
   requires(require_custom_serialization<T>)
-  simdjson_inline void append(const T &val);
+  simdjson_inline void append(T &&val);
 
   // Support for string-like types
   template <typename T>
@@ -127051,7 +127119,7 @@ public:
 #if SIMDJSON_SUPPORTS_RANGES && SIMDJSON_SUPPORTS_CONCEPTS
   // Support for range-based appending (std::ranges::view, etc.)
   template <std::ranges::range R>
-requires (!std::is_convertible<R, std::string_view>::value)
+requires (!std::is_convertible<R, std::string_view>::value && !require_custom_serialization<R>)
   simdjson_inline void append(const R &range) noexcept;
 #endif
   /**
@@ -127976,7 +128044,9 @@ public:
   simdjson_inline simdjson_result<array_iterator> end() & noexcept;
 
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -128020,7 +128090,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -129205,7 +129276,9 @@ public:
   simdjson_inline simdjson_result<object_iterator> begin() noexcept;
   simdjson_inline simdjson_result<object_iterator> end() noexcept;
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -129253,7 +129326,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -136677,8 +136751,8 @@ simdjson_inline void string_builder::append(const T &opt) {
 
 template <typename T>
   requires(require_custom_serialization<T>)
-simdjson_inline void string_builder::append(const T &val) {
-  serialize(*this, val);
+simdjson_inline void string_builder::append(T &&val) {
+  serialize(*this, std::forward<T>(val));
 }
 
 template <typename T>
@@ -136692,7 +136766,7 @@ simdjson_inline void string_builder::append(const T &value) {
 #if SIMDJSON_SUPPORTS_RANGES && SIMDJSON_SUPPORTS_CONCEPTS
 // Support for range-based appending (std::ranges::view, etc.)
 template <std::ranges::range R>
-  requires(!std::is_convertible<R, std::string_view>::value)
+  requires(!std::is_convertible<R, std::string_view>::value && !require_custom_serialization<R>)
 simdjson_inline void string_builder::append(const R &range) noexcept {
   auto it = std::ranges::begin(range);
   auto end = std::ranges::end(range);
@@ -139902,7 +139976,9 @@ public:
    */
   simdjson_inline simdjson_result<value> at(size_t index) noexcept;
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -139936,7 +140012,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -140283,7 +140360,9 @@ public:
   simdjson_inline simdjson_result<lasx::ondemand::array_iterator> end() & noexcept;
 
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -140315,7 +140394,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the defaul because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -141784,9 +141864,8 @@ struct has_custom_serialization : std::false_type {};
 
 inline constexpr struct serialize_tag {
   template <typename T>
-    requires custom_deserializable<T>
-  constexpr void operator()(lasx::builder::string_builder& b, T& obj) const{
-    return tag_invoke(*this, b, obj);
+  constexpr void operator()(lasx::builder::string_builder& b, T&& obj) const{
+    return tag_invoke(*this, b, std::forward<T>(obj));
   }
 
 
@@ -141925,7 +142004,7 @@ public:
 
   template <typename T>
   requires(require_custom_serialization<T>)
-  simdjson_inline void append(const T &val);
+  simdjson_inline void append(T &&val);
 
   // Support for string-like types
   template <typename T>
@@ -141936,7 +142015,7 @@ public:
 #if SIMDJSON_SUPPORTS_RANGES && SIMDJSON_SUPPORTS_CONCEPTS
   // Support for range-based appending (std::ranges::view, etc.)
   template <std::ranges::range R>
-requires (!std::is_convertible<R, std::string_view>::value)
+requires (!std::is_convertible<R, std::string_view>::value && !require_custom_serialization<R>)
   simdjson_inline void append(const R &range) noexcept;
 #endif
   /**
@@ -142861,7 +142940,9 @@ public:
   simdjson_inline simdjson_result<array_iterator> end() & noexcept;
 
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -142905,7 +142986,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -144090,7 +144172,9 @@ public:
   simdjson_inline simdjson_result<object_iterator> begin() noexcept;
   simdjson_inline simdjson_result<object_iterator> end() noexcept;
   /**
-   * Look up a field by name on an object (order-sensitive).
+   * Look up a field by name on an object (order-sensitive). By order-sensitive, we mean that
+   * fields must be accessed in the order they appear in the JSON text (although you can
+   * skip fields). See find_field_unordered() and operator[] for an order-insensitive version.
    *
    * The following code reads z, then y, then x, and thus will not retrieve x or y if fed the
    * JSON `{ "x": 1, "y": 2, "z": 3 }`:
@@ -144138,7 +144222,8 @@ public:
    * missing case has a non-cache-friendly bump and lots of extra scanning, especially if the object
    * in question is large. The fact that the extra code is there also bumps the executable size.
    *
-   * It is the default, however, because it would be highly surprising (and hard to debug) if the
+   * We default operator[] on find_field_unordered() for convenience.
+   * It is the default because it would be highly surprising (and hard to debug) if the
    * default behavior failed to look up a field just because it was in the wrong order--and many
    * APIs assume this. Therefore, you must be explicit if you want to treat objects as out of order.
    *
@@ -151562,8 +151647,8 @@ simdjson_inline void string_builder::append(const T &opt) {
 
 template <typename T>
   requires(require_custom_serialization<T>)
-simdjson_inline void string_builder::append(const T &val) {
-  serialize(*this, val);
+simdjson_inline void string_builder::append(T &&val) {
+  serialize(*this, std::forward<T>(val));
 }
 
 template <typename T>
@@ -151577,7 +151662,7 @@ simdjson_inline void string_builder::append(const T &value) {
 #if SIMDJSON_SUPPORTS_RANGES && SIMDJSON_SUPPORTS_CONCEPTS
 // Support for range-based appending (std::ranges::view, etc.)
 template <std::ranges::range R>
-  requires(!std::is_convertible<R, std::string_view>::value)
+  requires(!std::is_convertible<R, std::string_view>::value && !require_custom_serialization<R>)
 simdjson_inline void string_builder::append(const R &range) noexcept {
   auto it = std::ranges::begin(range);
   auto end = std::ranges::end(range);
