@@ -38,7 +38,6 @@ on:
           - simdjson
           - simdutf
           - sqlite
-          - temporal
           - undici
           - uvwasi
           - zlib
@@ -250,14 +249,6 @@ jobs:
             label: dependencies, sqlite
             run: |
               ./tools/dep_updaters/update-sqlite.sh > temp-output
-              cat temp-output
-              tail -n1 temp-output | grep "NEW_VERSION=" >> "$GITHUB_ENV" || true
-              rm temp-output
-          - id: temporal
-            subsystem: deps
-            label: dependencies
-            run: |
-              ./tools/dep_updaters/update-temporal.sh > temp-output
               cat temp-output
               tail -n1 temp-output | grep "NEW_VERSION=" >> "$GITHUB_ENV" || true
               rm temp-output
